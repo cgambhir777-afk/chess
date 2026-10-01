@@ -7,12 +7,42 @@ void main() => runApp(const ChessGameApp());
 enum GameMode { local, computer }
 
 enum BoardTheme {
-  forest('Forest', BoardColor.green, Color(0xFF193A35), Color(0xFFE5F0E8), Color(0xFFB8D7C2)),
-  walnut('Walnut', BoardColor.brown, Color(0xFF4A2B20), Color(0xFFF5E8D6), Color(0xFFDDBA8C)),
-  midnight('Midnight', BoardColor.darkBrown, Color(0xFF1B2034), Color(0xFFE7E9F6), Color(0xFF9AA8D6)),
-  ember('Ember', BoardColor.orange, Color(0xFF54261C), Color(0xFFFFE7D2), Color(0xFFE9A06B));
+  forest(
+    'Forest',
+    BoardColor.green,
+    Color(0xFF193A35),
+    Color(0xFFE5F0E8),
+    Color(0xFFB8D7C2),
+  ),
+  walnut(
+    'Walnut',
+    BoardColor.brown,
+    Color(0xFF4A2B20),
+    Color(0xFFF5E8D6),
+    Color(0xFFDDBA8C),
+  ),
+  midnight(
+    'Midnight',
+    BoardColor.darkBrown,
+    Color(0xFF1B2034),
+    Color(0xFFE7E9F6),
+    Color(0xFF9AA8D6),
+  ),
+  ember(
+    'Ember',
+    BoardColor.orange,
+    Color(0xFF54261C),
+    Color(0xFFFFE7D2),
+    Color(0xFFE9A06B),
+  );
 
-  const BoardTheme(this.label, this.boardColor, this.ink, this.surface, this.accent);
+  const BoardTheme(
+    this.label,
+    this.boardColor,
+    this.ink,
+    this.surface,
+    this.accent,
+  );
 
   final String label;
   final BoardColor boardColor;
@@ -153,14 +183,22 @@ class ChessPage extends StatefulWidget {
 
 class _ChessPageState extends State<ChessPage> {
   ChessBoardController _controller = ChessBoardController();
-  final ComputerPlayer _computer = ComputerPlayer();
+  final List<String> _positionHistory = [];
   GameMode _gameMode = GameMode.local;
   BoardTheme _boardTheme = BoardTheme.forest;
+  int _computerDepth = 3;
   String? _selectedSquare;
   bool _resultDialogShown = false;
   bool _computerThinking = false;
+  bool _gameStarted = false;
 
   Chess get _game => _controller.game;
+
+  @override
+  void initState() {
+    super.initState();
+    _positionHistory.add(_game.fen);
+  }
 
   @override
   void dispose() {
@@ -169,6 +207,7 @@ class _ChessPageState extends State<ChessPage> {
   }
 
   void _handleMove() {
+    _recordPosition();
     setState(() => _selectedSquare = null);
     if (_finishGameIfNeeded()) return;
     if (_gameMode == GameMode.computer && _game.turn == Chess.BLACK) {
@@ -179,6 +218,9 @@ class _ChessPageState extends State<ChessPage> {
   void _resetGame() {
     _controller.resetBoard();
     setState(() {
+      _positionHistory
+        ..clear()
+        ..add(_game.fen);
       _resultDialogShown = false;
       _computerThinking = false;
       _selectedSquare = null;
@@ -200,6 +242,42 @@ class _ChessPageState extends State<ChessPage> {
     final previousGame = _game.copy();
     previousGame.undo_move();
     _replaceController(previousGame);
+    if (_positionHistory.length > 1) _positionHistory.removeLast();
+  }
+
+  void _recordPosition() {
+    final fen = _game.fen;
+    if (_positionHistory.isEmpty || _positionHistory.last != fen) {
+      _positionHistory.add(fen);
+    }
+  }
+
+  void _startGame(GameMode mode) {
+    _resetGame();
+    setState(() {
+      _gameMode = mode;
+      _gameStarted = true;
+    });
+  }
+
+  void _returnHome() {
+    _resetGame();
+    setState(() => _gameStarted = false);
+  }
+
+  void _openReview() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => GameReviewPage(
+          positions: List<String>.unmodifiable(_positionHistory),
+          moves: List<String>.unmodifiable(
+            _game.san_moves().whereType<String>(),
+          ),
+          result: _resultTitle,
+          boardTheme: _boardTheme,
+        ),
+      ),
+    );
   }
 
   void _replaceController(chess.Chess game) {
@@ -259,7 +337,7 @@ class _ChessPageState extends State<ChessPage> {
     await Future<void>.delayed(const Duration(milliseconds: 350));
     if (!mounted || _gameMode != GameMode.computer || _game.game_over) return;
 
-    final move = _computer.chooseMove(_game);
+    final move = ComputerPlayer(depth: _computerDepth).chooseMove(_game);
     if (move != null) {
       final nextGame = _game.copy();
       nextGame.move({
@@ -269,6 +347,7 @@ class _ChessPageState extends State<ChessPage> {
           'promotion': _promotionName(move.promotion!),
       });
       _replaceController(nextGame);
+      _recordPosition();
     }
     if (!mounted) return;
     setState(() => _computerThinking = false);
@@ -301,7 +380,11 @@ class _ChessPageState extends State<ChessPage> {
             child: ListTile(
               leading: const Icon(Icons.people_alt_outlined),
               title: const Text('Two players'),
-              subtitle: Text(_gameMode == GameMode.local ? 'Selected' : 'Pass and play locally'),
+              subtitle: Text(
+                _gameMode == GameMode.local
+                    ? 'Selected'
+                    : 'Pass and play locally',
+              ),
             ),
           ),
           SimpleDialogOption(
@@ -342,7 +425,10 @@ class _ChessPageState extends State<ChessPage> {
           'move validation, reconnection, and synchronized game state.',
         ),
         actions: [
-          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Got it')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it'),
+          ),
         ],
       ),
     );
@@ -359,15 +445,26 @@ class _ChessPageState extends State<ChessPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Choose your table', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              const Text(
+                'Choose your table',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
               const SizedBox(height: 6),
-              const Text('Every palette changes the board and the room around it.'),
+              const Text(
+                'Every palette changes the board and the room around it.',
+              ),
               const SizedBox(height: 16),
               for (final theme in BoardTheme.values)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: _ThemeSwatch(theme: theme, selected: theme == _boardTheme),
-                  title: Text(theme.label, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  leading: _ThemeSwatch(
+                    theme: theme,
+                    selected: theme == _boardTheme,
+                  ),
+                  title: Text(
+                    theme.label,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   trailing: theme == _boardTheme
                       ? const Icon(Icons.check_circle_rounded)
                       : const Icon(Icons.chevron_right_rounded),
@@ -409,6 +506,14 @@ class _ChessPageState extends State<ChessPage> {
               : 'No legal continuation remains. Well played by both sides.',
         ),
         actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _openReview();
+            },
+            icon: const Icon(Icons.analytics_outlined),
+            label: const Text('Review match'),
+          ),
           FilledButton.icon(
             onPressed: () {
               Navigator.of(context).pop();
@@ -424,8 +529,13 @@ class _ChessPageState extends State<ChessPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_gameStarted) return _buildHome();
     return Scaffold(
-      backgroundColor: Color.lerp(_boardTheme.surface, const Color(0xFFF4F1EA), 0.34),
+      backgroundColor: Color.lerp(
+        _boardTheme.surface,
+        const Color(0xFFF4F1EA),
+        0.34,
+      ),
       appBar: AppBar(
         backgroundColor: _boardTheme.ink.withAlpha(235),
         foregroundColor: Colors.white,
@@ -440,6 +550,11 @@ class _ChessPageState extends State<ChessPage> {
           ),
         ),
         actions: [
+          IconButton(
+            onPressed: _returnHome,
+            tooltip: 'Home',
+            icon: const Icon(Icons.home_outlined),
+          ),
           IconButton(
             onPressed: _chooseBoardTheme,
             tooltip: 'Choose board theme',
@@ -498,30 +613,96 @@ class _ChessPageState extends State<ChessPage> {
                             // instance remains the source of truth for every game state.
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
-                              onTapUp: (details) => _handleBoardTap(
-                                details,
-                                boardSize - 16,
-                              ),
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 650),
-                                switchInCurve: Curves.easeOutBack,
-                                switchOutCurve: Curves.easeIn,
-                                transitionBuilder: (child, animation) => FadeTransition(
-                                  opacity: animation,
-                                  child: ScaleTransition(scale: animation, child: child),
-                                ),
-                                child: ChessBoard(
-                                  key: ValueKey(_boardTheme),
-                                  controller: _controller,
-                                  size: boardSize - 16,
-                                  boardColor: _boardTheme.boardColor,
-                                  boardOrientation: PlayerColor.white,
-                                  enableUserMoves: !_game.game_over &&
-                                      !_computerThinking &&
-                                      (_gameMode == GameMode.local ||
-                                          _game.turn == Chess.WHITE),
-                                  onMove: _handleMove,
-                                ),
+                              onTapUp: (details) =>
+                                  _handleBoardTap(details, boardSize - 16),
+                              child: Stack(
+                                children: [
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 240),
+                                    switchInCurve: Curves.easeOutCubic,
+                                    switchOutCurve: Curves.easeIn,
+                                    transitionBuilder: (child, animation) =>
+                                        FadeTransition(
+                                          opacity: animation,
+                                          child: ScaleTransition(
+                                            scale: animation,
+                                            child: child,
+                                          ),
+                                        ),
+                                    child: ChessBoard(
+                                      key: ValueKey(
+                                        '${_boardTheme.name}-${_game.history.length}',
+                                      ),
+                                      controller: _controller,
+                                      size: boardSize - 16,
+                                      boardColor: _boardTheme.boardColor,
+                                      boardOrientation: PlayerColor.white,
+                                      enableUserMoves:
+                                          !_game.game_over &&
+                                          !_computerThinking &&
+                                          (_gameMode == GameMode.local ||
+                                              _game.turn == Chess.WHITE),
+                                      onMove: _handleMove,
+                                    ),
+                                  ),
+                                  Positioned.fill(
+                                    child: IgnorePointer(
+                                      child: TweenAnimationBuilder<double>(
+                                        key: ValueKey(
+                                          'feedback-$_selectedSquare-${_game.history.length}',
+                                        ),
+                                        tween: Tween(begin: 0, end: 1),
+                                        duration: const Duration(
+                                          milliseconds: 260,
+                                        ),
+                                        curve: Curves.easeOutCubic,
+                                        builder: (context, progress, _) =>
+                                            CustomPaint(
+                                              painter: _BoardFeedbackPainter(
+                                                selectedSquare: _selectedSquare,
+                                                legalTargets:
+                                                    _selectedSquare == null
+                                                    ? const []
+                                                    : List<String>.from(
+                                                        _game.moves({
+                                                          'square':
+                                                              _selectedSquare,
+                                                        }),
+                                                      ),
+                                                captureTargets:
+                                                    _selectedSquare == null
+                                                    ? const []
+                                                    : List<String>.from(
+                                                        _game.moves({
+                                                          'square':
+                                                              _selectedSquare,
+                                                        }),
+                                                      ).where((square) =>
+                                                          _game.get(square) != null).toList(),
+                                                lastMoveFrom:
+                                                    _game.history.isEmpty
+                                                    ? null
+                                                    : _game
+                                                          .history
+                                                          .last
+                                                          .move
+                                                          .fromAlgebraic,
+                                                lastMoveTo:
+                                                    _game.history.isEmpty
+                                                    ? null
+                                                    : _game
+                                                          .history
+                                                          .last
+                                                          .move
+                                                          .toAlgebraic,
+                                                progress: progress,
+                                              ),
+                                              child: const SizedBox.expand(),
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -535,6 +716,190 @@ class _ChessPageState extends State<ChessPage> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHome() {
+    const difficultyNames = ['Casual', 'Easy', 'Club', 'Advanced', 'Maximum'];
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F1EA),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 540),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF193A35),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.grid_4x4_rounded,
+                          color: Color(0xFFE5F0E8),
+                          size: 30,
+                        ),
+                        SizedBox(height: 22),
+                        Text(
+                          'CHESS ROOM',
+                          style: TextStyle(
+                            color: Color(0xFFE5F0E8),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Choose your game',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 30,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 26),
+                  const Text(
+                    'PLAY',
+                    style: TextStyle(
+                      color: Color(0xFF777B74),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _buildModeCard(
+                    icon: Icons.smart_toy_outlined,
+                    title: 'Play computer',
+                    subtitle: 'Choose a challenge and play as White',
+                    onTap: () => _startGame(GameMode.computer),
+                  ),
+                  const SizedBox(height: 10),
+                  _buildModeCard(
+                    icon: Icons.people_alt_outlined,
+                    title: 'Play a friend',
+                    subtitle: 'Two players, one board',
+                    onTap: () => _startGame(GameMode.local),
+                  ),
+                  const SizedBox(height: 10),
+                  _buildModeCard(
+                    icon: Icons.public_outlined,
+                    title: 'Online multiplayer',
+                    subtitle: 'Play across devices',
+                    onTap: _showOnlineInfo,
+                  ),
+                  const SizedBox(height: 22),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE9E5DC),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFD8D1C2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Computer difficulty',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            Text(
+                              difficultyNames[_computerDepth - 1],
+                              style: const TextStyle(
+                                color: Color(0xFF386F5B),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Slider(
+                          value: _computerDepth.toDouble(),
+                          min: 1,
+                          max: 5,
+                          divisions: 4,
+                          label: difficultyNames[_computerDepth - 1],
+                          onChanged: (value) =>
+                              setState(() => _computerDepth = value.round()),
+                        ),
+                        const Text(
+                          'Higher settings search further ahead.',
+                          style: TextStyle(
+                            color: Color(0xFF777B74),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: const Color(0xFFE9E5DC),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Icon(icon, color: const Color(0xFF386F5B), size: 24),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Color(0xFF777B74),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 15,
+                color: Color(0xFF777B74),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -597,8 +962,8 @@ class _ChessPageState extends State<ChessPage> {
                 _game.game_over
                     ? 'Game complete'
                     : _computerThinking
-                        ? 'Computer is thinking'
-                        : _turnLabel,
+                    ? 'Computer is thinking'
+                    : _turnLabel,
                 style: TextStyle(
                   color: isWhiteTurn
                       ? const Color(0xFF343A38)
@@ -624,7 +989,9 @@ class _ChessPageState extends State<ChessPage> {
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           child: Row(
-            key: ValueKey('${_game.history.length}-${_game.turn}-$_computerThinking'),
+            key: ValueKey(
+              '${_game.history.length}-${_game.turn}-$_computerThinking',
+            ),
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.touch_app_rounded, size: 16, color: _boardTheme.ink),
@@ -633,10 +1000,10 @@ class _ChessPageState extends State<ChessPage> {
                 _game.game_over
                     ? 'Replay the match when you are ready'
                     : _computerThinking
-                        ? 'Watch the computer calculate...'
+                    ? 'Watch the computer calculate...'
                     : _selectedSquare != null
-                      ? 'Piece selected - tap its destination'
-                        : 'Tap a piece, then tap its destination',
+                    ? 'Piece selected - tap its destination'
+                    : 'Tap a piece, then tap its destination',
                 style: TextStyle(
                   color: _boardTheme.ink,
                   fontSize: 12,
@@ -814,6 +1181,270 @@ class _ChessPageState extends State<ChessPage> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BoardFeedbackPainter extends CustomPainter {
+  const _BoardFeedbackPainter({
+    required this.selectedSquare,
+    required this.legalTargets,
+    required this.captureTargets,
+    required this.lastMoveFrom,
+    required this.lastMoveTo,
+    required this.progress,
+  });
+
+  final String? selectedSquare;
+  final List<String> legalTargets;
+  final List<String> captureTargets;
+  final String? lastMoveFrom;
+  final String? lastMoveTo;
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final squareWidth = size.width / 8;
+    final squareHeight = size.height / 8;
+    final lastMovePaint = Paint()
+      ..color = const Color(0x6694B66E).withAlpha((102 * progress).round());
+    for (final square in [lastMoveFrom, lastMoveTo]) {
+      if (square != null) {
+        canvas.drawRect(
+          _squareRect(square, squareWidth, squareHeight),
+          lastMovePaint,
+        );
+      }
+    }
+
+    if (selectedSquare == null) return;
+    final selectedPaint = Paint()
+      ..color = const Color(0x8896BD75).withAlpha((136 * progress).round());
+    canvas.drawRect(
+      _squareRect(selectedSquare!, squareWidth, squareHeight),
+      selectedPaint,
+    );
+
+    for (final target in legalTargets) {
+      final center = _squareCenter(target, squareWidth, squareHeight);
+      final isCapture = captureTargets.contains(target);
+      final targetPaint = Paint()
+        ..color = const Color(0xAA263B32).withAlpha((170 * progress).round())
+        ..style = isCapture ? PaintingStyle.stroke : PaintingStyle.fill
+        ..strokeWidth = squareWidth * 0.07;
+      canvas.drawCircle(
+        center,
+        squareWidth * (isCapture ? 0.34 : 0.13),
+        targetPaint,
+      );
+    }
+  }
+
+  Rect _squareRect(String square, double squareWidth, double squareHeight) {
+    final column = square.codeUnitAt(0) - 97;
+    final row = 8 - int.parse(square[1]);
+    return Rect.fromLTWH(
+      column * squareWidth,
+      row * squareHeight,
+      squareWidth,
+      squareHeight,
+    );
+  }
+
+  Offset _squareCenter(String square, double squareWidth, double squareHeight) {
+    final rect = _squareRect(square, squareWidth, squareHeight);
+    return rect.center;
+  }
+
+  @override
+  bool shouldRepaint(covariant _BoardFeedbackPainter oldDelegate) => true;
+}
+
+class GameReviewPage extends StatefulWidget {
+  const GameReviewPage({
+    super.key,
+    required this.positions,
+    required this.moves,
+    required this.result,
+    required this.boardTheme,
+  });
+
+  final List<String> positions;
+  final List<String> moves;
+  final String result;
+  final BoardTheme boardTheme;
+
+  @override
+  State<GameReviewPage> createState() => _GameReviewPageState();
+}
+
+class _GameReviewPageState extends State<GameReviewPage> {
+  late final ChessBoardController _controller;
+  int _currentPly = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = ChessBoardController.fromFEN(widget.positions.first);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _showPly(int ply) {
+    final boundedPly = ply.clamp(0, widget.positions.length - 1);
+    setState(() => _currentPly = boundedPly);
+    _controller.loadFen(widget.positions[boundedPly]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Color.lerp(
+        widget.boardTheme.surface,
+        const Color(0xFFF4F1EA),
+        0.34,
+      ),
+      appBar: AppBar(
+        backgroundColor: widget.boardTheme.ink.withAlpha(235),
+        foregroundColor: Colors.white,
+        title: const Text('Match review'),
+      ),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final boardSize = (constraints.maxWidth - 32)
+                .clamp(250.0, 540.0)
+                .toDouble();
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        widget.result,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Center(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: widget.boardTheme.ink,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: ChessBoard(
+                              key: ValueKey(_currentPly),
+                              controller: _controller,
+                              size: boardSize - 16,
+                              boardColor: widget.boardTheme.boardColor,
+                              boardOrientation: PlayerColor.white,
+                              enableUserMoves: false,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            tooltip: 'Previous move',
+                            onPressed: _currentPly == 0
+                                ? null
+                                : () => _showPly(_currentPly - 1),
+                            icon: const Icon(Icons.skip_previous_rounded),
+                          ),
+                          Text(
+                            '$_currentPly / ${widget.moves.length}',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          IconButton(
+                            tooltip: 'Next move',
+                            onPressed: _currentPly >= widget.moves.length
+                                ? null
+                                : () => _showPly(_currentPly + 1),
+                            icon: const Icon(Icons.skip_next_rounded),
+                          ),
+                        ],
+                      ),
+                      Slider(
+                        value: _currentPly.toDouble(),
+                        min: 0,
+                        max: widget.moves.length.toDouble().clamp(
+                          1,
+                          double.infinity,
+                        ),
+                        divisions: widget.moves.isEmpty
+                            ? null
+                            : widget.moves.length,
+                        onChanged: widget.moves.isEmpty
+                            ? null
+                            : (value) => _showPly(value.round()),
+                      ),
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 280),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE9E5DC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFD8D1C2)),
+                        ),
+                        child: widget.moves.isEmpty
+                            ? const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Text('No moves to review.'),
+                              )
+                            : ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: widget.moves.length,
+                                itemBuilder: (context, index) {
+                                  final isWhiteMove = index.isEven;
+                                  return Material(
+                                    color: Colors.transparent,
+                                    child: ListTile(
+                                      dense: true,
+                                      selected: _currentPly == index + 1,
+                                      selectedTileColor: const Color(
+                                        0xFFD8E5D9,
+                                      ),
+                                      leading: SizedBox(
+                                        width: 48,
+                                        child: Text(
+                                          '${index ~/ 2 + 1}. ${isWhiteMove ? 'White' : 'Black'}',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                      title: Text(
+                                        widget.moves[index],
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      onTap: () => _showPly(index + 1),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
