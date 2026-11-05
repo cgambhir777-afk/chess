@@ -184,13 +184,14 @@ class ChessPage extends StatefulWidget {
 class _ChessPageState extends State<ChessPage> {
   ChessBoardController _controller = ChessBoardController();
   final List<String> _positionHistory = [];
-  GameMode _gameMode = GameMode.local;
+  GameMode _gameMode = GameMode.computer;
   BoardTheme _boardTheme = BoardTheme.forest;
   int _computerDepth = 3;
   String? _selectedSquare;
   bool _resultDialogShown = false;
   bool _computerThinking = false;
   bool _gameStarted = false;
+  bool _homeComputerSelected = false;
 
   Chess get _game => _controller.game;
 
@@ -262,7 +263,10 @@ class _ChessPageState extends State<ChessPage> {
 
   void _returnHome() {
     _resetGame();
-    setState(() => _gameStarted = false);
+    setState(() {
+      _gameStarted = false;
+      _homeComputerSelected = false;
+    });
   }
 
   void _openReview() {
@@ -389,28 +393,17 @@ class _ChessPageState extends State<ChessPage> {
           ),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(context, GameMode.computer),
-            child: const ListTile(
-              leading: Icon(Icons.smart_toy_outlined),
+            child: ListTile(
+              leading: const Icon(Icons.smart_toy_outlined),
               title: Text('Play computer'),
               subtitle: Text('You play White against the computer'),
-            ),
-          ),
-          SimpleDialogOption(
-            onPressed: () {
-              Navigator.pop(context);
-              _showOnlineInfo();
-            },
-            child: const ListTile(
-              leading: Icon(Icons.cloud_outlined),
-              title: Text('Online multiplayer'),
-              subtitle: Text('Requires a matchmaking server'),
             ),
           ),
         ],
       ),
     );
     if (selectedMode == null || selectedMode == _gameMode) return;
-    _gameMode = selectedMode;
+    setState(() => _gameMode = selectedMode);
     _resetGame();
   }
 
@@ -617,88 +610,45 @@ class _ChessPageState extends State<ChessPage> {
                                   _handleBoardTap(details, boardSize - 16),
                               child: Stack(
                                 children: [
-                                  AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 240),
-                                    switchInCurve: Curves.easeOutCubic,
-                                    switchOutCurve: Curves.easeIn,
-                                    transitionBuilder: (child, animation) =>
-                                        FadeTransition(
-                                          opacity: animation,
-                                          child: ScaleTransition(
-                                            scale: animation,
-                                            child: child,
-                                          ),
-                                        ),
-                                    child: ChessBoard(
-                                      key: ValueKey(
-                                        '${_boardTheme.name}-${_game.history.length}',
-                                      ),
-                                      controller: _controller,
-                                      size: boardSize - 16,
-                                      boardColor: _boardTheme.boardColor,
-                                      boardOrientation: PlayerColor.white,
-                                      enableUserMoves:
-                                          !_game.game_over &&
-                                          !_computerThinking &&
-                                          (_gameMode == GameMode.local ||
-                                              _game.turn == Chess.WHITE),
-                                      onMove: _handleMove,
+                                  ChessBoard(
+                                    key: ValueKey(
+                                      '${_boardTheme.name}-${_game.history.length}',
                                     ),
+                                    controller: _controller,
+                                    size: boardSize - 16,
+                                    boardColor: _boardTheme.boardColor,
+                                    boardOrientation: PlayerColor.white,
+                                    enableUserMoves:
+                                        !_game.game_over &&
+                                        !_computerThinking &&
+                                        (_gameMode == GameMode.computer ||
+                                            _game.turn == Chess.WHITE),
+                                    onMove: _handleMove,
                                   ),
                                   Positioned.fill(
                                     child: IgnorePointer(
-                                      child: TweenAnimationBuilder<double>(
-                                        key: ValueKey(
-                                          'feedback-$_selectedSquare-${_game.history.length}',
+                                      child: CustomPaint(
+                                        painter: _BoardFeedbackPainter(
+                                          selectedSquare: _selectedSquare,
+                                          legalTargets: _selectedSquare == null
+                                              ? const []
+                                              : List<String>.from(_game.moves({
+                                                  'square': _selectedSquare,
+                                                })),
+                                          captureTargets: _selectedSquare == null
+                                              ? const []
+                                              : List<String>.from(_game.moves({
+                                                  'square': _selectedSquare,
+                                                })).where((square) => _game.get(square) != null).toList(),
+                                          lastMoveFrom: _game.history.isEmpty
+                                              ? null
+                                              : _game.history.last.move.fromAlgebraic,
+                                          lastMoveTo: _game.history.isEmpty
+                                              ? null
+                                              : _game.history.last.move.toAlgebraic,
+                                          progress: 1,
                                         ),
-                                        tween: Tween(begin: 0, end: 1),
-                                        duration: const Duration(
-                                          milliseconds: 260,
-                                        ),
-                                        curve: Curves.easeOutCubic,
-                                        builder: (context, progress, _) =>
-                                            CustomPaint(
-                                              painter: _BoardFeedbackPainter(
-                                                selectedSquare: _selectedSquare,
-                                                legalTargets:
-                                                    _selectedSquare == null
-                                                    ? const []
-                                                    : List<String>.from(
-                                                        _game.moves({
-                                                          'square':
-                                                              _selectedSquare,
-                                                        }),
-                                                      ),
-                                                captureTargets:
-                                                    _selectedSquare == null
-                                                    ? const []
-                                                    : List<String>.from(
-                                                        _game.moves({
-                                                          'square':
-                                                              _selectedSquare,
-                                                        }),
-                                                      ).where((square) =>
-                                                          _game.get(square) != null).toList(),
-                                                lastMoveFrom:
-                                                    _game.history.isEmpty
-                                                    ? null
-                                                    : _game
-                                                          .history
-                                                          .last
-                                                          .move
-                                                          .fromAlgebraic,
-                                                lastMoveTo:
-                                                    _game.history.isEmpty
-                                                    ? null
-                                                    : _game
-                                                          .history
-                                                          .last
-                                                          .move
-                                                          .toAlgebraic,
-                                                progress: progress,
-                                              ),
-                                              child: const SizedBox.expand(),
-                                            ),
+                                        child: const SizedBox.expand(),
                                       ),
                                     ),
                                   ),
@@ -724,135 +674,207 @@ class _ChessPageState extends State<ChessPage> {
   Widget _buildHome() {
     const difficultyNames = ['Casual', 'Easy', 'Club', 'Advanced', 'Maximum'];
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F1EA),
+      backgroundColor: const Color(0xFFF3F0E8),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 540),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF193A35),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.grid_4x4_rounded,
-                          color: Color(0xFFE5F0E8),
-                          size: 30,
-                        ),
-                        SizedBox(height: 22),
-                        Text(
-                          'CHESS ROOM',
-                          style: TextStyle(
-                            color: Color(0xFFE5F0E8),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Choose your game',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 30,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 26),
-                  const Text(
-                    'PLAY',
-                    style: TextStyle(
-                      color: Color(0xFF777B74),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildModeCard(
-                    icon: Icons.smart_toy_outlined,
-                    title: 'Play computer',
-                    subtitle: 'Choose a challenge and play as White',
-                    onTap: () => _startGame(GameMode.computer),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildModeCard(
-                    icon: Icons.people_alt_outlined,
-                    title: 'Play a friend',
-                    subtitle: 'Two players, one board',
-                    onTap: () => _startGame(GameMode.local),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildModeCard(
-                    icon: Icons.public_outlined,
-                    title: 'Online multiplayer',
-                    subtitle: 'Play across devices',
-                    onTap: _showOnlineInfo,
-                  ),
-                  const SizedBox(height: 22),
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE9E5DC),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFD8D1C2)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 760;
+            return Center(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: wide ? 32 : 20,
+                  vertical: wide ? 32 : 18,
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 980),
+                  child: wide
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Computer difficulty',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            Text(
-                              difficultyNames[_computerDepth - 1],
-                              style: const TextStyle(
-                                color: Color(0xFF386F5B),
-                                fontWeight: FontWeight.w700,
-                              ),
+                            Expanded(child: _buildHomeHero()),
+                            const SizedBox(width: 28),
+                            SizedBox(
+                              width: 420,
+                              child: _buildHomeControls(difficultyNames),
                             ),
                           ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildHomeHero(),
+                            const SizedBox(height: 18),
+                            _buildHomeControls(difficultyNames),
+                          ],
                         ),
-                        Slider(
-                          value: _computerDepth.toDouble(),
-                          min: 1,
-                          max: 5,
-                          divisions: 4,
-                          label: difficultyNames[_computerDepth - 1],
-                          onChanged: (value) =>
-                              setState(() => _computerDepth = value.round()),
-                        ),
-                        const Text(
-                          'Higher settings search further ahead.',
-                          style: TextStyle(
-                            color: Color(0xFF777B74),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHomeHero() {
+    return Container(
+      height: 290,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF173B35), Color(0xFF315F53)],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: const [
+          BoxShadow(color: Color(0x2A173B35), blurRadius: 24, offset: Offset(0, 12)),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -36,
+            top: 28,
+            child: Transform.rotate(
+              angle: -0.08,
+              child: Container(
+                width: 220,
+                height: 220,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFB9D1BF),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 18, offset: Offset(0, 8))],
+                ),
+                child: _buildMiniChessboard(),
               ),
             ),
           ),
-        ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [const Color(0xFF173B35).withAlpha(240), const Color(0xFF173B35).withAlpha(20)],
+                ),
+              ),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.all(26),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text('CHESS ROOM', style: TextStyle(color: Color(0xFFCDE2D3), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 2.4)),
+                SizedBox(height: 10),
+                Text('Your next move\nstarts here.', style: TextStyle(color: Colors.white, fontSize: 34, height: 1.05, fontWeight: FontWeight.w800)),
+              ],
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildMiniChessboard() {
+    final pieces = <int, String>{
+      0: '♜', 1: '♞', 2: '♝', 3: '♛', 4: '♚', 5: '♝', 6: '♞', 7: '♜',
+      8: '♟', 9: '♟', 10: '♟', 11: '♟', 12: '♟', 13: '♟', 14: '♟', 15: '♟',
+      48: '♙', 49: '♙', 50: '♙', 51: '♙', 52: '♙', 53: '♙', 54: '♙', 55: '♙',
+      56: '♖', 57: '♘', 58: '♗', 59: '♕', 60: '♔', 61: '♗', 62: '♘', 63: '♖',
+    };
+    return GridView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 64,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 8),
+      itemBuilder: (context, index) {
+        final light = ((index ~/ 8) + index) % 2 == 0;
+        final piece = pieces[index];
+        return ColoredBox(
+          color: light ? const Color(0xFFEEF4E9) : const Color(0xFF7FA58D),
+          child: Center(
+            child: Text(piece ?? '', style: TextStyle(fontSize: 18, color: index >= 48 ? const Color(0xFFFFFFFF) : const Color(0xFF263A34), shadows: index < 48 ? null : const [Shadow(color: Colors.black26, blurRadius: 2)])),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHomeControls(List<String> difficultyNames) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text('Choose a game', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 14),
+        _buildModeCard(
+          icon: Icons.smart_toy_outlined,
+          title: 'Play computer',
+          subtitle: 'Challenge an adjustable opponent',
+          selected: _homeComputerSelected,
+          onTap: () => setState(() => _homeComputerSelected = true),
+        ),
+        const SizedBox(height: 10),
+        _buildModeCard(
+          icon: Icons.people_alt_outlined,
+          title: 'Play a friend',
+          subtitle: 'Two players on one device',
+          selected: false,
+          onTap: () {
+            setState(() => _homeComputerSelected = false);
+            _startGame(GameMode.local);
+          },
+        ),
+        const SizedBox(height: 10),
+        _buildModeCard(
+          icon: Icons.public_outlined,
+          title: 'Online multiplayer',
+          subtitle: 'Unavailable - local multiplayer only',
+          selected: false,
+          onTap: _showOnlineInfo,
+        ),
+        if (_homeComputerSelected) ...[
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFDED9CB))),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(child: Text('Computer intelligence', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800))),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(color: const Color(0xFFE5EFE7), borderRadius: BorderRadius.circular(20)),
+                      child: Text(difficultyNames[_computerDepth - 1], style: const TextStyle(color: Color(0xFF315F53), fontWeight: FontWeight.w800, fontSize: 12)),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: _computerDepth.toDouble(),
+                  min: 1,
+                  max: 5,
+                  divisions: 4,
+                  label: difficultyNames[_computerDepth - 1],
+                  activeColor: const Color(0xFF315F53),
+                  onChanged: (value) => setState(() => _computerDepth = value.round()),
+                ),
+                const Text('Choose how deeply the opponent evaluates each position.', style: TextStyle(fontSize: 12, color: Color(0xFF777B74))),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF173B35), foregroundColor: Colors.white, minimumSize: const Size.fromHeight(52), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                  onPressed: () => _startGame(GameMode.computer),
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Start match', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -860,44 +882,27 @@ class _ChessPageState extends State<ChessPage> {
     required IconData icon,
     required String title,
     required String subtitle,
+    required bool selected,
     required VoidCallback onTap,
   }) {
     return Material(
-      color: const Color(0xFFE9E5DC),
-      borderRadius: BorderRadius.circular(12),
+      color: selected ? const Color(0xFFE4EFE7) : Colors.white,
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        child: Padding(
+        child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: selected ? const Color(0xFF315F53) : const Color(0xFFDDD7C8), width: selected ? 1.5 : 1),
+          ),
           child: Row(
             children: [
-              Icon(icon, color: const Color(0xFF386F5B), size: 24),
+              Container(width: 44, height: 44, decoration: BoxDecoration(color: selected ? const Color(0xFF315F53) : const Color(0xFFF0EDE4), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: selected ? Colors.white : const Color(0xFF315F53))),
               const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: Color(0xFF777B74),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 15,
-                color: Color(0xFF777B74),
-              ),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text(subtitle, style: const TextStyle(color: Color(0xFF777B74), fontSize: 12))])),
+              Icon(selected ? Icons.check_circle_rounded : Icons.arrow_forward_ios_rounded, size: selected ? 20 : 15, color: selected ? const Color(0xFF315F53) : const Color(0xFF777B74)),
             ],
           ),
         ),
@@ -933,8 +938,7 @@ class _ChessPageState extends State<ChessPage> {
           ],
         ),
         const SizedBox(height: 14),
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 420),
+        Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
           decoration: BoxDecoration(
             color: isWhiteTurn
@@ -950,68 +954,36 @@ class _ChessPageState extends State<ChessPage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.circle,
-                size: 10,
-                color: isWhiteTurn
-                    ? const Color(0xFFC5A35A)
-                    : const Color(0xFFE9E4D9),
-              ),
+              Icon(Icons.circle, size: 10, color: isWhiteTurn ? const Color(0xFFC5A35A) : const Color(0xFFE9E4D9)),
               const SizedBox(width: 9),
               Text(
-                _game.game_over
-                    ? 'Game complete'
-                    : _computerThinking
-                    ? 'Computer is thinking'
-                    : _turnLabel,
-                style: TextStyle(
-                  color: isWhiteTurn
-                      ? const Color(0xFF343A38)
-                      : const Color(0xFFF7F3EA),
-                  fontWeight: FontWeight.w700,
-                ),
+                _game.game_over ? 'Game complete' : _computerThinking ? 'Computer is thinking' : _turnLabel,
+                style: TextStyle(color: isWhiteTurn ? const Color(0xFF343A38) : const Color(0xFFF7F3EA), fontWeight: FontWeight.w700),
               ),
               if (_game.in_check && !_game.game_over) ...[
                 const SizedBox(width: 8),
-                const Text(
-                  'CHECK',
-                  style: TextStyle(
-                    color: Color(0xFFB7684A),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                const Text('CHECK', style: TextStyle(color: Color(0xFFB7684A), fontSize: 11, fontWeight: FontWeight.w700)),
               ],
             ],
           ),
         ),
         const SizedBox(height: 10),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: Row(
-            key: ValueKey(
-              '${_game.history.length}-${_game.turn}-$_computerThinking',
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.touch_app_rounded, size: 16, color: _boardTheme.ink),
+            const SizedBox(width: 7),
+            Text(
+              _game.game_over
+                  ? 'Replay the match when you are ready'
+                  : _computerThinking
+                      ? 'Watch the computer calculate...'
+                      : _selectedSquare != null
+                          ? 'Piece selected - tap its destination'
+                          : 'Tap a piece, then tap its destination',
+              style: TextStyle(color: _boardTheme.ink, fontSize: 12, fontWeight: FontWeight.w700),
             ),
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.touch_app_rounded, size: 16, color: _boardTheme.ink),
-              const SizedBox(width: 7),
-              Text(
-                _game.game_over
-                    ? 'Replay the match when you are ready'
-                    : _computerThinking
-                    ? 'Watch the computer calculate...'
-                    : _selectedSquare != null
-                    ? 'Piece selected - tap its destination'
-                    : 'Tap a piece, then tap its destination',
-                style: TextStyle(
-                  color: _boardTheme.ink,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
       ],
     );
@@ -1019,8 +991,7 @@ class _ChessPageState extends State<ChessPage> {
 
   Widget _buildPlayer(String name, String subtitle, bool active, bool isWhite) {
     final captured = _capturedPieces(isWhite ? Chess.BLACK : Chess.WHITE);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
+    return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: active ? const Color(0xFFE7E2D7) : const Color(0xFFEDE9E0),
@@ -1458,8 +1429,7 @@ class _ThemeSwatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
+    return Container(
       width: 54,
       height: 36,
       padding: const EdgeInsets.all(4),

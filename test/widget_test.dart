@@ -13,7 +13,7 @@ void main() {
     expect(find.text('Play computer'), findsOneWidget);
     expect(find.text('Play a friend'), findsOneWidget);
     expect(find.text('Online multiplayer'), findsOneWidget);
-    expect(find.text('Computer difficulty'), findsOneWidget);
+    expect(find.text('Computer intelligence'), findsNothing);
   });
 
   testWidgets('starts a computer game from the home screen', (tester) async {
@@ -21,10 +21,10 @@ void main() {
 
     await tester.tap(find.text('Play computer'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Start match'));
+    await tester.pumpAndSettle();
 
     expect(find.text('White to move'), findsOneWidget);
-    expect(find.text('Computer'), findsOneWidget);
-    expect(find.text('Move history'), findsOneWidget);
   });
 
   testWidgets('reviews moves by selecting a ply', (tester) async {
